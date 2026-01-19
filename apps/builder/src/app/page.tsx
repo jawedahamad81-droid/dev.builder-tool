@@ -6,7 +6,7 @@ import OutlineTree from "../components/OutlineTree";
 import { useBuilderStore } from "../store/builder.store";
 
 export default function BuilderHome() {
-  const app = useBuilderStore((s) => s.app);
+  const app = useBuilderStore((s) => s.history.present);
   const activePageId = useBuilderStore((s) => s.activePageId);
   const selectedNodeId = useBuilderStore((s) => s.selectedNodeId);
 
@@ -14,12 +14,22 @@ export default function BuilderHome() {
   const setSelectedNodeId = useBuilderStore((s) => s.setSelectedNodeId);
 
   const addNodeToRoot = useBuilderStore((s) => s.addNodeToRoot);
-  const updateSelectedProp = useBuilderStore((s) => s.updateSelectedProp);
+  const addNode = useBuilderStore((s) => s.addNode);
 
+  const updateSelectedProp = useBuilderStore((s) => s.updateSelectedProp);
   const deleteNode = useBuilderStore((s) => s.deleteNode);
   const moveNode = useBuilderStore((s) => s.moveNode);
+  const moveByDnD = useBuilderStore((s) => s.moveByDnD);
+
+  const duplicateNode = useBuilderStore((s) => s.duplicateNode);
+
+  const undo = useBuilderStore((s) => s.undo);
+  const redo = useBuilderStore((s) => s.redo);
+  const canUndo = useBuilderStore((s) => s.canUndo);
+  const canRedo = useBuilderStore((s) => s.canRedo);
 
   const selectedNode = selectedNodeId ? app.nodes[selectedNodeId] : undefined;
+  const selectedIsContainer = !!selectedNodeId && app.nodes[selectedNodeId]?.type === "container";
 
   const page = useMemo(
     () => app.pages.find((p) => p.id === activePageId) ?? app.pages[0],
@@ -31,11 +41,13 @@ export default function BuilderHome() {
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "320px 1fr 340px", height: "100vh" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "360px 1fr 380px", height: "100vh" }}>
       {/* Left */}
       <aside style={{ borderRight: "1px solid rgba(0,0,0,0.1)", padding: 12, overflow: "auto" }}>
         <h3 style={{ margin: 0 }}>Builder</h3>
-        <p style={{ marginTop: 6, opacity: 0.7, fontSize: 13 }}>Day-2: Outline + Delete + Reorder + Store</p>
+        <p style={{ marginTop: 6, opacity: 0.7, fontSize: 13 }}>
+          Day-4: Add Container + Add Child + Duplicate + Canvas Overlay
+        </p>
 
         <div style={{ marginTop: 12 }}>
           <label style={{ fontSize: 13, opacity: 0.8 }}>Page</label>
@@ -52,17 +64,70 @@ export default function BuilderHome() {
           </select>
         </div>
 
+        {/* Root add */}
         <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
           <button onClick={() => addNodeToRoot("text")} style={btnStyle}>
-            + Add Text
+            + Add Text (Root)
           </button>
           <button onClick={() => addNodeToRoot("button")} style={btnStyle}>
-            + Add Button
+            + Add Button (Root)
+          </button>
+          <button onClick={() => addNodeToRoot("container")} style={btnStyle}>
+            + Add Container (Root)
           </button>
         </div>
 
-        <div style={{ marginTop: 16, fontSize: 12, opacity: 0.7 }}>
+        {/* Undo/Redo */}
+        <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+          <button onClick={undo} disabled={!canUndo()} style={btnStyle}>
+            Undo
+          </button>
+          <button onClick={redo} disabled={!canRedo()} style={btnStyle}>
+            Redo
+          </button>
+        </div>
+
+        <div style={{ marginTop: 14, fontSize: 12, opacity: 0.7 }}>
           Selected Node: <b>{selectedNodeId || "-"}</b>
+        </div>
+
+        {/* Add inside selected container */}
+        <div
+          style={{
+            marginTop: 12,
+            padding: 10,
+            borderRadius: 14,
+            border: "1px solid rgba(0,0,0,0.08)",
+            background: "rgba(0,0,0,0.02)"
+          }}
+        >
+          <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 8 }}>
+            Add inside selected container
+          </div>
+
+          <button
+            style={btnStyle}
+            disabled={!selectedIsContainer}
+            onClick={() => selectedNodeId && addNode(selectedNodeId, "text")}
+          >
+            + Child Text
+          </button>
+
+          <button
+            style={btnStyle}
+            disabled={!selectedIsContainer}
+            onClick={() => selectedNodeId && addNode(selectedNodeId, "button")}
+          >
+            + Child Button
+          </button>
+
+          <button
+            style={btnStyle}
+            disabled={!selectedIsContainer}
+            onClick={() => selectedNodeId && addNode(selectedNodeId, "container")}
+          >
+            + Child Container
+          </button>
         </div>
 
         <hr style={{ margin: "16px 0", opacity: 0.2 }} />
@@ -74,6 +139,7 @@ export default function BuilderHome() {
           onSelect={(id) => setSelectedNodeId(id)}
           onDelete={(id) => deleteNode(id)}
           onMove={(id, dir) => moveNode(id, dir)}
+          onDnD={(activeId, overId) => moveByDnD(activeId, overId)}
         />
       </aside>
 
@@ -100,6 +166,16 @@ export default function BuilderHome() {
           <div style={{ marginTop: 12 }}>
             <div style={{ fontSize: 12, opacity: 0.75 }}>
               Type: <b>{selectedNode.type}</b>
+            </div>
+
+            <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+              <button
+                onClick={() => selectedNodeId && duplicateNode(selectedNodeId)}
+                style={btnStyle}
+                disabled={!selectedNodeId}
+              >
+                Duplicate Selected
+              </button>
             </div>
 
             {selectedNode.type === "text" && (
@@ -147,8 +223,16 @@ export default function BuilderHome() {
                 <label style={labelStyle}>Gap</label>
                 <input
                   type="number"
-                  value={Number(selectedNode.props.gap ?? 8)}
+                  value={Number(selectedNode.props.gap ?? 10)}
                   onChange={(e) => updateProp("gap", Number(e.target.value))}
+                  style={inputStyle}
+                />
+
+                <label style={labelStyle}>Padding</label>
+                <input
+                  type="number"
+                  value={Number(selectedNode.props.padding ?? 10)}
+                  onChange={(e) => updateProp("padding", Number(e.target.value))}
                   style={inputStyle}
                 />
               </>
