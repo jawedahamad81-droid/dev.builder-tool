@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import type { AppModel } from "@packages/schemas";
+import { Icons } from "./icons";
 
 type Item = { id: string; updatedAt: string };
 
@@ -72,7 +73,9 @@ export default function ProjectBar({
   }
 
   function exportJson() {
-    const blob = new Blob([JSON.stringify(app, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(app, null, 2)], {
+      type: "application/json"
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -82,32 +85,73 @@ export default function ProjectBar({
   }
 
   return (
-    <div style={{ marginTop: 12, padding: 10, borderRadius: 14, border: "1px solid rgba(0,0,0,0.08)", background: "rgba(0,0,0,0.02)" }}>
-      <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 8 }}>
+    <div
+      style={{
+        marginTop: 12,
+        padding: 10,
+        borderRadius: 14,
+        border: "1px solid rgba(0,0,0,0.08)",
+        background: "rgba(0,0,0,0.02)"
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          opacity: 0.75,
+          marginBottom: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 6
+        }}
+      >
+        <Icons.Layers size={14} />
         Project: <b>{projectId}</b>
       </div>
 
       <div style={{ display: "grid", gap: 8 }}>
         <button disabled={busy} onClick={save} style={btn}>
+          <Icons.Publish size={16} />
           Save
         </button>
 
         <button disabled={busy} onClick={createNew} style={btn}>
+          <Icons.Duplicate size={16} />
           Save As New
         </button>
 
         <button disabled={busy} onClick={exportJson} style={btn}>
+          <Icons.Download size={16} />
           Export JSON
         </button>
 
-        <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>Open Project</div>
+        <div
+          style={{
+            fontSize: 12,
+            opacity: 0.7,
+            marginTop: 6,
+            display: "flex",
+            alignItems: "center",
+            gap: 6
+          }}
+        >
+          <Icons.FolderOpen size={14} />
+          Open Project
+        </div>
+
         <select
           disabled={busy}
           value={projectId}
           onChange={(e) => open(e.target.value)}
-          style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid rgba(0,0,0,0.12)" }}
+          style={{
+            width: "100%",
+            padding: 10,
+            borderRadius: 12,
+            border: "1px solid rgba(0,0,0,0.12)"
+          }}
         >
-          {items.length === 0 && <option value={projectId}>No saved projects</option>}
+          {items.length === 0 && (
+            <option value={projectId}>No saved projects</option>
+          )}
           {items.map((it) => (
             <option key={it.id} value={it.id}>
               {it.id} — {new Date(it.updatedAt).toLocaleString()}
@@ -125,5 +169,8 @@ const btn: React.CSSProperties = {
   border: "1px solid rgba(0,0,0,0.12)",
   background: "white",
   cursor: "pointer",
-  textAlign: "left"
+  textAlign: "left",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8
 };
