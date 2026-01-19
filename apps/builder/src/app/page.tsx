@@ -1,103 +1,80 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { Renderer } from "@packages/runtime";
-import { AppSchema, type AppModel } from "@packages/schemas";
-
-function uid(prefix = "n") {
-  return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now()}`;
-}
-
-const initialApp: AppModel = AppSchema.parse({
-  id: "app_1",
-  name: "My First Builder App",
-  pages: [
-    { id: "page_home", name: "Home", routePath: "/", rootNodeId: "root_home" },
-    { id: "page_dashboard", name: "Dashboard", routePath: "/dashboard", rootNodeId: "root_dash" }
-  ],
-  nodes: {
-    root_home: { id: "root_home", type: "container", props: { direction: "column", gap: 10 }, children: ["t1", "b1"] },
-    t1: { id: "t1", type: "text", props: { value: "Home Page", size: 22 }, children: [] },
-    b1: { id: "b1", type: "button", props: { label: "Click Me" }, children: [] },
-
-    root_dash: { id: "root_dash", type: "container", props: { direction: "column", gap: 10 }, children: ["t2"] },
-    t2: { id: "t2", type: "text", props: { value: "Dashboard Page", size: 22 }, children: [] }
-  }
-});
+import OutlineTree from "../components/OutlineTree";
+import { useBuilderStore } from "../store/builder.store";
 
 export default function BuilderHome() {
-  const [app, setApp] = useState<AppModel>(initialApp);
-  const [activePageId, setActivePageId] = useState(app.pages[0].id);
-  const [selectedNodeId, setSelectedNodeId] = useState<string>("");
+  const app = useBuilderStore((s) => s.app);
+  const activePageId = useBuilderStore((s) => s.activePageId);
+  const selectedNodeId = useBuilderStore((s) => s.selectedNodeId);
+
+  const setActivePageId = useBuilderStore((s) => s.setActivePageId);
+  const setSelectedNodeId = useBuilderStore((s) => s.setSelectedNodeId);
+
+  const addNodeToRoot = useBuilderStore((s) => s.addNodeToRoot);
+  const updateSelectedProp = useBuilderStore((s) => s.updateSelectedProp);
+
+  const deleteNode = useBuilderStore((s) => s.deleteNode);
+  const moveNode = useBuilderStore((s) => s.moveNode);
 
   const selectedNode = selectedNodeId ? app.nodes[selectedNodeId] : undefined;
 
-  const page = useMemo(() => app.pages.find(p => p.id === activePageId) ?? app.pages[0], [app.pages, activePageId]);
-
-  function addText() {
-    const id = uid("text");
-    const rootId = page.rootNodeId;
-
-    setApp(prev => {
-      const next = structuredClone(prev);
-      next.nodes[id] = { id, type: "text", props: { value: "New Text", size: 16 }, children: [] };
-      next.nodes[rootId].children.push(id);
-      return AppSchema.parse(next);
-    });
-  }
-
-  function addButton() {
-    const id = uid("btn");
-    const rootId = page.rootNodeId;
-
-    setApp(prev => {
-      const next = structuredClone(prev);
-      next.nodes[id] = { id, type: "button", props: { label: "New Button" }, children: [] };
-      next.nodes[rootId].children.push(id);
-      return AppSchema.parse(next);
-    });
-  }
+  const page = useMemo(
+    () => app.pages.find((p) => p.id === activePageId) ?? app.pages[0],
+    [app.pages, activePageId]
+  );
 
   function updateProp(key: string, value: any) {
-    if (!selectedNodeId) return;
-    setApp(prev => {
-      const next = structuredClone(prev);
-      next.nodes[selectedNodeId].props = { ...(next.nodes[selectedNodeId].props ?? {}), [key]: value };
-      return AppSchema.parse(next);
-    });
+    updateSelectedProp(key, value);
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "260px 1fr 340px", height: "100vh" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "320px 1fr 340px", height: "100vh" }}>
       {/* Left */}
-      <aside style={{ borderRight: "1px solid rgba(0,0,0,0.1)", padding: 12 }}>
+      <aside style={{ borderRight: "1px solid rgba(0,0,0,0.1)", padding: 12, overflow: "auto" }}>
         <h3 style={{ margin: 0 }}>Builder</h3>
-        <p style={{ marginTop: 6, opacity: 0.7, fontSize: 13 }}>Day-1: schema + renderer + edit</p>
+        <p style={{ marginTop: 6, opacity: 0.7, fontSize: 13 }}>Day-2: Outline + Delete + Reorder + Store</p>
 
         <div style={{ marginTop: 12 }}>
           <label style={{ fontSize: 13, opacity: 0.8 }}>Page</label>
           <select
             value={activePageId}
-            onChange={(e) => {
-              setActivePageId(e.target.value);
-              setSelectedNodeId("");
-            }}
+            onChange={(e) => setActivePageId(e.target.value)}
             style={{ width: "100%", marginTop: 6, padding: 8, borderRadius: 10 }}
           >
-            {app.pages.map(p => (
-              <option key={p.id} value={p.id}>{p.name} ({p.routePath})</option>
+            {app.pages.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} ({p.routePath})
+              </option>
             ))}
           </select>
         </div>
 
-        <div style={{ marginTop: 16, display: "flex", gap: 8, flexDirection: "column" }}>
-          <button onClick={addText} style={btnStyle}>+ Add Text</button>
-          <button onClick={addButton} style={btnStyle}>+ Add Button</button>
+        <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
+          <button onClick={() => addNodeToRoot("text")} style={btnStyle}>
+            + Add Text
+          </button>
+          <button onClick={() => addNodeToRoot("button")} style={btnStyle}>
+            + Add Button
+          </button>
         </div>
 
         <div style={{ marginTop: 16, fontSize: 12, opacity: 0.7 }}>
           Selected Node: <b>{selectedNodeId || "-"}</b>
         </div>
+
+        <hr style={{ margin: "16px 0", opacity: 0.2 }} />
+
+        <OutlineTree
+          app={app}
+          pageId={activePageId}
+          selectedNodeId={selectedNodeId}
+          onSelect={(id) => setSelectedNodeId(id)}
+          onDelete={(id) => deleteNode(id)}
+          onMove={(id, dir) => moveNode(id, dir)}
+        />
       </aside>
 
       {/* Center */}
@@ -114,14 +91,16 @@ export default function BuilderHome() {
       </main>
 
       {/* Right */}
-      <aside style={{ borderLeft: "1px solid rgba(0,0,0,0.1)", padding: 12 }}>
+      <aside style={{ borderLeft: "1px solid rgba(0,0,0,0.1)", padding: 12, overflow: "auto" }}>
         <h3 style={{ margin: 0 }}>Properties</h3>
 
         {!selectedNode ? (
-          <p style={{ opacity: 0.7, fontSize: 13 }}>Click any component in preview to edit.</p>
+          <p style={{ opacity: 0.7, fontSize: 13 }}>Click any component in preview or outline to edit.</p>
         ) : (
           <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 12, opacity: 0.75 }}>Type: <b>{selectedNode.type}</b></div>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>
+              Type: <b>{selectedNode.type}</b>
+            </div>
 
             {selectedNode.type === "text" && (
               <>
@@ -179,8 +158,21 @@ export default function BuilderHome() {
 
         <hr style={{ margin: "16px 0", opacity: 0.2 }} />
 
-        <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>App JSON (debug)</div>
-        <pre style={{ fontSize: 11, background: "#0b1020", color: "#e6edf3", padding: 10, borderRadius: 12, overflow: "auto", maxHeight: "55vh" }}>
+        <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>
+          App JSON (debug) — <b>{page.name}</b>
+        </div>
+
+        <pre
+          style={{
+            fontSize: 11,
+            background: "#0b1020",
+            color: "#e6edf3",
+            padding: 10,
+            borderRadius: 12,
+            overflow: "auto",
+            maxHeight: "55vh"
+          }}
+        >
           {JSON.stringify(app, null, 2)}
         </pre>
       </aside>
