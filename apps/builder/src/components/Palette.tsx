@@ -4,42 +4,54 @@ import React from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { Icons } from "./icons";
 
-export type PaletteNodeType = "text" | "button" | "container";
+export type PaletteNodeType =
+  | "text"
+  | "button"
+  | "container"
+  | "col"
+  | "image"
+  | "input"
+  | "iconButton"
+  | "badge"
+  | "card";
 
 const ITEMS: Array<{
   title: string;
   meta: string;
   type: PaletteNodeType;
-  icon: React.ComponentType<{ size?: number }>;
+  Icon: any;
 }> = [
-  { title: "Text", meta: "Typography", type: "text", icon: Icons.Text },
-  { title: "Button", meta: "Actions", type: "button", icon: Icons.Button },
-  { title: "Container", meta: "Layout", type: "container", icon: Icons.Container }
+  { title: "Text", meta: "Typography", type: "text", Icon: Icons.Text },
+  { title: "Button", meta: "Actions", type: "button", Icon: Icons.Button },
+  { title: "Input", meta: "Forms", type: "input", Icon: Icons.Search },
+  { title: "Image", meta: "Media", type: "image", Icon: Icons.Layers },
+  { title: "Icon Button", meta: "Actions", type: "iconButton", Icon: Icons.Add },
+  { title: "Badge", meta: "Label", type: "badge", Icon: Icons.Grid },
+  { title: "Card", meta: "Surface", type: "card", Icon: Icons.Layers },
+  { title: "Container", meta: "Layout", type: "container", Icon: Icons.Container },
+  { title: "Column", meta: "Grid12 item", type: "col", Icon: Icons.Grid }
 ];
 
 function DraggableBlock({
   title,
   meta,
   type,
-  icon: Icon,
+  Icon,
   onClickAdd
 }: {
   title: string;
   meta: string;
   type: PaletteNodeType;
-  icon: React.ComponentType<{ size?: number }>;
+  Icon: any;
   onClickAdd: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: `palette:${type}`,
-      data: { kind: "palette", nodeType: type }
-    });
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `palette:${type}`,
+    data: { kind: "palette", nodeType: type }
+  });
 
   const style: React.CSSProperties = {
-    transform: transform
-      ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
-      : undefined,
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     opacity: isDragging ? 0.55 : 1
   };
 
@@ -51,13 +63,12 @@ function DraggableBlock({
       onClick={onClickAdd}
       {...listeners}
       {...attributes}
-      title="Drag to canvas • Click to add to root"
+      title="Drag to canvas • Click to add"
     >
-      <div className="blockIcon">
-        <Icon size={18} />
+      <div className="blockTitle" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <Icon size={16} />
+        {title}
       </div>
-
-      <div className="blockTitle">{title}</div>
       <div className="blockMeta">{meta}</div>
     </div>
   );
@@ -77,8 +88,7 @@ export default function Palette({
   return (
     <div className="category">
       <div className="categoryHeader">
-        Basic ({filtered.length})
-        <span className="kbd">Drag & Drop</span>
+        Basic ({filtered.length}) <span className="kbd">Drag & Drop</span>
       </div>
 
       <div className="categoryGrid">
@@ -88,7 +98,7 @@ export default function Palette({
             title={b.title}
             meta={b.meta}
             type={b.type}
-            icon={b.icon}
+            Icon={b.Icon}
             onClickAdd={() => onAddToRoot(b.type)}
           />
         ))}

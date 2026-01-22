@@ -1,439 +1,455 @@
-// apps/builder/src/store/builder.store.ts
+"use client";
+
 import { create } from "zustand";
-import { AppSchema, type AppModel, type Node } from "@packages/schemas";
+import { AppSchema, type AppModel, type Node, type NodeType } from "@packages/schemas";
 
-/* =========================
-   Types
-========================= */
+type History<T> = { past: T[]; present: T; future: T[] };
+type MoveDir = "up" | "down";
 
-type History<T> = {
-  past: T[];
-  present: T;
-  future: T[];
-};
+// ✅ Day-10 includes new components
+type BuilderNodeType =
+  | NodeType
+  | "text"
+  | "button"
+  | "container"
+  | "col"
+  | "image"
+  | "input"
+  | "iconButton"
+  | "badge"
+  | "card";
 
-type NodeType = "text" | "button" | "container";
-
-type BuilderState = {
-  // ✅ Day-5 additions
+export type BuilderState = {
   projectId: string;
   setProjectId: (id: string) => void;
   loadApp: (app: AppModel) => void;
 
   history: History<AppModel>;
-  activePageId: string;
-  selectedNodeId: string;
-
-  // selectors
-  app: () => AppModel;
-
-  // page / selection
-  setActivePageId: (pageId: string) => void;
-  setSelectedNodeId: (nodeId: string) => void;
-
-  // history
   undo: () => void;
   redo: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
 
-  // mutations
-  addNodeToRoot: (type: NodeType, defaults?: Record<string, any>) => void;
-  addNode: (parentId: string, type: NodeType, defaults?: Record<string, any>) => void;
+  activePageId: string;
+  setActivePageId: (id: string) => void;
 
-  updateSelectedProp: (key: string, value: any) => void;
-  deleteNode: (nodeId: string) => void;
-  moveNode: (nodeId: string, dir: "up" | "down") => void;
+  selectedNodeId: string;
+  setSelectedNodeId: (id: string) => void;
 
-  // Day-3 Drag & Drop (Outline)
+  addNodeToRoot: (type: BuilderNodeType) => void;
+  addNode: (parentId: string, type: BuilderNodeType, index?: number) => void;
+
+  deleteNode: (id: string) => void;
+  duplicateNode: (id: string) => void;
+
+  moveNode: (id: string, dir: MoveDir) => void;
   moveByDnD: (activeId: string, overId: string) => void;
 
-  // Day-4
-  duplicateNode: (nodeId: string) => void;
+  updateSelectedProp: (key: string, value: any) => void;
 };
 
-/* =========================
-   Utils
-========================= */
-
-function uid(prefix = "n") {
+function uid(prefix = "node") {
   return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now()}`;
 }
 
-function clone<T>(v: T): T {
-  return JSON.parse(JSON.stringify(v));
+function clone<T>(x: T): T {
+  return JSON.parse(JSON.stringify(x));
 }
 
 function isRootNode(app: AppModel, nodeId: string) {
   return app.pages.some((p) => p.rootNodeId === nodeId);
 }
 
-function findParentAndIndex(
-  app: AppModel,
-  childId: string
-): { parentId: string; index: number } | null {
-  for (const [pid, node] of Object.entries(app.nodes)) {
-    const idx = (node.children ?? []).indexOf(childId);
-    if (idx !== -1) return { parentId: pid, index: idx };
+function canHaveChildren(node?: Node) {
+  return node?.type === "container" || node?.type === "col" || node?.type === "card";
+}
+
+function normalizeApp(app: AppModel): AppModel {
+  const parsed = AppSchema.parse(app);
+  const next = clone(parsed);
+
+  for (const id of Object.keys(next.nodes)) {
+    const n = next.nodes[id];
+    if (canHaveChildren(n) && !Array.isArray(n.children)) n.children = [];
+  }
+
+  // Ensure data exists
+  next.data = next.data ?? { collections: {} };
+  next.data.collections = next.data.collections ?? {};
+
+  return next;
+}
+
+function createNode(type: BuilderNodeType): Node {
+  const id = uid(type);
+
+  if (type === "text") {
+    return { id, type: "text", props: { value: "Text {{index}}", size: 16 }, children: [] };
+  }
+  if (type === "button") {
+    return { id, type: "button", props: { label: "Button" }, children: [] };
+  }
+  if (type === "container") {
+    return {
+      id,
+      type: "container",
+      props: {
+        layout: "flex", // "flex" | "grid12"
+        direction: "column",
+        gap: 10,
+        padding: 10,
+        border: true
+      },
+      children: []
+    };
+  }
+  if (type === "col") {
+    return { id, type: "col", props: { span: 6, minHeight: 80 }, children: [] };
+  }
+
+  // ✅ Day-10 components
+  if (type === "image") {
+    return {
+      id,
+      type: "image",
+      props: {
+        src: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1200&q=60",
+        alt: "image",
+        radius: 16,
+        height: 180,
+        fit: "cover"
+      },
+      children: []
+    };
+  }
+
+  if (type === "input") {
+    return {
+      id,
+      type: "input",
+      props: {
+        placeholder: "Search products…",
+        value: "",
+        radius: 999,
+        height: 42
+      },
+      children: []
+    };
+  }
+
+  if (type === "iconButton") {
+    return {
+      id,
+      type: "iconButton",
+      props: {
+        icon: "heart", // heart | cart | star | user
+        label: "",
+        radius: 12
+      },
+      children: []
+    };
+  }
+
+  if (type === "badge") {
+    return {
+      id,
+      type: "badge",
+      props: { text: "Top item", tone: "yellow" },
+      children: []
+    };
+  }
+
+  if (type === "card") {
+    return {
+      id,
+      type: "card",
+      props: { padding: 12, radius: 18, shadow: true },
+      children: []
+    };
+  }
+
+  return { id, type: "text", props: { value: "Text", size: 16 }, children: [] };
+}
+
+function removeChild(parent: Node, childId: string) {
+  parent.children = (parent.children ?? []).filter((x) => x !== childId);
+}
+
+function insertChild(parent: Node, childId: string, index?: number) {
+  const children = parent.children ?? [];
+  const next = children.filter((x) => x !== childId);
+  if (typeof index === "number") next.splice(index, 0, childId);
+  else next.push(childId);
+  parent.children = next;
+}
+
+function findParentAndIndex(app: AppModel, childId: string): { parentId: string; index: number } | null {
+  for (const [pid, n] of Object.entries(app.nodes)) {
+    const idx = (n.children ?? []).indexOf(childId);
+    if (idx >= 0) return { parentId: pid, index: idx };
   }
   return null;
 }
 
-function removeChild(parent: Node, childId: string) {
-  parent.children = (parent.children ?? []).filter((c) => c !== childId);
-}
-
-function insertChild(parent: Node, childId: string, index?: number) {
-  const list = (parent.children ?? []).filter((c) => c !== childId);
-
-  if (index === undefined || index < 0 || index > list.length) list.push(childId);
-  else list.splice(index, 0, childId);
-
-  parent.children = list;
-}
-
 function deleteSubtree(app: AppModel, nodeId: string) {
-  const node = app.nodes[nodeId];
-  if (!node) return;
-
-  for (const cid of node.children ?? []) {
-    deleteSubtree(app, cid);
+  const n = app.nodes[nodeId];
+  if (!n) return;
+  for (const cid of n.children ?? []) deleteSubtree(app, cid);
+  const p = findParentAndIndex(app, nodeId);
+  if (p) {
+    const parent = app.nodes[p.parentId];
+    if (parent) removeChild(parent, nodeId);
   }
   delete app.nodes[nodeId];
 }
 
-function canHaveChildren(node?: Node) {
-  return !!node && node.type === "container";
+function duplicateSubtree(app: AppModel, nodeId: string): string {
+  const node = app.nodes[nodeId];
+  if (!node) return "";
+  const newId = uid(node.type);
+  const copy: Node = { id: newId, type: node.type as any, props: clone(node.props ?? {}), children: [] };
+  app.nodes[newId] = copy;
+  for (const cid of node.children ?? []) {
+    const childNewId = duplicateSubtree(app, cid);
+    if (childNewId) copy.children?.push(childNewId);
+  }
+  return newId;
 }
 
-function makeNode(id: string, type: NodeType, defaults: Record<string, any> = {}): Node {
-  if (type === "text") {
-    return { id, type: "text", props: { value: "New Text", size: 16, ...defaults }, children: [] };
-  }
-  if (type === "button") {
-    return { id, type: "button", props: { label: "New Button", ...defaults }, children: [] };
-  }
-  return {
-    id,
-    type: "container",
-    props: { direction: "column", gap: 10, padding: 10, border: true, ...defaults },
-    children: []
+function initialApp(): AppModel {
+  const rootId = "page_home";
+  const app: AppModel = {
+    pages: [{ id: "pg_home", name: "Home", routePath: "/", rootNodeId: rootId }],
+    nodes: {
+      [rootId]: {
+        id: rootId,
+        type: "container",
+        props: { layout: "flex", direction: "column", gap: 14, padding: 16, border: false },
+        children: []
+      }
+    },
+    // ✅ Day-10 demo data
+    data: {
+      collections: {
+        products: [
+          { title: "Smart Watch", price: 454, image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=1200&q=60", rating: 4.7, top: true },
+          { title: "Tennis Rackets", price: 30.99, image: "https://images.unsplash.com/photo-1521412644187-c49fa049e84d?auto=format&fit=crop&w=1200&q=60", rating: 4.6 },
+          { title: "Boxing Gloves", price: 196.84, image: "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?auto=format&fit=crop&w=1200&q=60", rating: 4.8 }
+        ]
+      }
+    }
   };
+
+  return normalizeApp(app);
 }
-
-// Deep duplicate subtree: creates new nodes with new ids, preserving structure.
-function duplicateSubtree(draft: AppModel, sourceId: string): string {
-  const idMap: Record<string, string> = {};
-
-  function alloc(oldId: string) {
-    const old = draft.nodes[oldId];
-    const prefix = old.type === "text" ? "text" : old.type === "button" ? "btn" : "ct";
-    idMap[oldId] = uid(prefix);
-  }
-
-  alloc(sourceId);
-
-  function walk(oldId: string) {
-    const old = draft.nodes[oldId];
-    const newId = idMap[oldId];
-
-    const newChildren: string[] = [];
-    for (const cid of old.children ?? []) {
-      alloc(cid);
-      newChildren.push(idMap[cid]);
-    }
-
-    draft.nodes[newId] = {
-      ...clone(old),
-      id: newId,
-      children: newChildren
-    };
-
-    for (const cid of old.children ?? []) walk(cid);
-  }
-
-  walk(sourceId);
-  return idMap[sourceId];
-}
-
-/* =========================
-   Initial App
-========================= */
-
-const initialApp: AppModel = AppSchema.parse({
-  id: "app_1",
-  name: "My First Builder App",
-  pages: [
-    { id: "page_home", name: "Home", routePath: "/", rootNodeId: "root_home" },
-    { id: "page_dashboard", name: "Dashboard", routePath: "/dashboard", rootNodeId: "root_dash" }
-  ],
-  nodes: {
-    root_home: {
-      id: "root_home",
-      type: "container",
-      props: { direction: "column", gap: 10, padding: 12, border: false },
-      children: ["t1", "b1"]
-    },
-    t1: { id: "t1", type: "text", props: { value: "Home Page", size: 22 }, children: [] },
-    b1: { id: "b1", type: "button", props: { label: "Click Me" }, children: [] },
-
-    root_dash: {
-      id: "root_dash",
-      type: "container",
-      props: { direction: "column", gap: 10, padding: 12, border: false },
-      children: ["t2"]
-    },
-    t2: { id: "t2", type: "text", props: { value: "Dashboard Page", size: 22 }, children: [] }
-  }
-});
-
-/* =========================
-   History Commit Helper
-========================= */
-
-function commit(mutator: (draft: AppModel) => void, get: () => BuilderState, set: any) {
-  const current = get().history.present;
-  const next = clone(current);
-
-  mutator(next);
-
-  const validated = AppSchema.parse(next);
-
-  set((state: BuilderState) => ({
-    history: {
-      past: [...state.history.past, state.history.present],
-      present: validated,
-      future: []
-    }
-  }));
-}
-
-/* =========================
-   Store
-========================= */
 
 export const useBuilderStore = create<BuilderState>((set, get) => ({
-  // ✅ Day-5 initial value
   projectId: "default",
-
-  // ✅ Day-5: set project id
   setProjectId: (id) => set(() => ({ projectId: id })),
 
-  // ✅ Day-5: load app (replace whole model, reset history)
   loadApp: (app) =>
     set(() => {
-      const validated = AppSchema.parse(app);
+      const parsed = normalizeApp(app);
       return {
-        history: { past: [], present: validated, future: [] },
-        activePageId: validated.pages?.[0]?.id ?? "page_home",
+        history: { past: [], present: parsed, future: [] },
+        activePageId: parsed.pages?.[0]?.id ?? "pg_home",
         selectedNodeId: ""
       };
     }),
 
-  history: {
-    past: [],
-    present: initialApp,
-    future: []
-  },
-
-  activePageId: initialApp.pages[0].id,
-  selectedNodeId: "",
-
-  app: () => get().history.present,
-
-  setActivePageId: (pageId) =>
-    set(() => ({
-      activePageId: pageId,
-      selectedNodeId: ""
-    })),
-
-  setSelectedNodeId: (nodeId) => set(() => ({ selectedNodeId: nodeId })),
+  history: { past: [], present: initialApp(), future: [] },
 
   canUndo: () => get().history.past.length > 0,
   canRedo: () => get().history.future.length > 0,
 
   undo: () =>
-    set((state) => {
-      if (state.history.past.length === 0) return state;
-
-      const prev = state.history.past[state.history.past.length - 1];
-      return {
-        ...state,
-        history: {
-          past: state.history.past.slice(0, -1),
-          present: prev,
-          future: [state.history.present, ...state.history.future]
-        },
-        selectedNodeId: ""
-      };
+    set(() => {
+      const h = get().history;
+      if (h.past.length === 0) return {};
+      const prev = h.past[h.past.length - 1];
+      return { history: { past: h.past.slice(0, -1), present: prev, future: [h.present, ...h.future] } };
     }),
 
   redo: () =>
-    set((state) => {
-      if (state.history.future.length === 0) return state;
-
-      const next = state.history.future[0];
-      return {
-        ...state,
-        history: {
-          past: [...state.history.past, state.history.present],
-          present: next,
-          future: state.history.future.slice(1)
-        },
-        selectedNodeId: ""
-      };
+    set(() => {
+      const h = get().history;
+      if (h.future.length === 0) return {};
+      const next = h.future[0];
+      return { history: { past: [...h.past, h.present], present: next, future: h.future.slice(1) } };
     }),
 
-  addNodeToRoot: (type, defaults = {}) => {
-    const app = get().history.present;
-    const page = app.pages.find((p) => p.id === get().activePageId)!;
-    const rootId = page.rootNodeId;
-    get().addNode(rootId, type, defaults);
+  activePageId: "pg_home",
+  setActivePageId: (id) => set(() => ({ activePageId: id })),
+
+  selectedNodeId: "",
+  setSelectedNodeId: (id) => set(() => ({ selectedNodeId: id })),
+
+  addNodeToRoot: (type) => {
+    const { history, activePageId } = get();
+    const app = clone(history.present);
+    const page = app.pages.find((p) => p.id === activePageId) ?? app.pages[0];
+    const root = app.nodes[page.rootNodeId];
+    if (!root || !canHaveChildren(root)) return;
+
+    const node = createNode(type);
+    app.nodes[node.id] = node;
+    insertChild(root, node.id);
+
+    const next = normalizeApp(app);
+    set(() => ({
+      history: { past: [...history.past, history.present], present: next, future: [] },
+      selectedNodeId: node.id
+    }));
   },
 
-  addNode: (parentId, type, defaults = {}) => {
-    const app = get().history.present;
+  addNode: (parentId, type, index) => {
+    const { history } = get();
+    const app = clone(history.present);
     const parent = app.nodes[parentId];
-    if (!parent || parent.type !== "container") return;
+    if (!parent || !canHaveChildren(parent)) return;
 
-    const id = uid(type === "text" ? "text" : type === "button" ? "btn" : "ct");
+    const node = createNode(type);
+    app.nodes[node.id] = node;
+    insertChild(parent, node.id, index);
 
-    commit(
-      (draft) => {
-        draft.nodes[id] = makeNode(id, type, defaults);
-        draft.nodes[parentId].children = [...(draft.nodes[parentId].children ?? []), id];
-      },
-      get,
-      set
-    );
+    const next = normalizeApp(app);
+    set(() => ({
+      history: { past: [...history.past, history.present], present: next, future: [] },
+      selectedNodeId: node.id
+    }));
+  },
 
-    set(() => ({ selectedNodeId: id }));
+  deleteNode: (id) => {
+    const { history } = get();
+    const app = clone(history.present);
+    if (!id || isRootNode(app, id)) return;
+
+    deleteSubtree(app, id);
+
+    const next = normalizeApp(app);
+    set(() => ({
+      history: { past: [...history.past, history.present], present: next, future: [] },
+      selectedNodeId: ""
+    }));
+  },
+
+  duplicateNode: (id) => {
+    const { history } = get();
+    const app = clone(history.present);
+    if (!id || isRootNode(app, id)) return;
+
+    const info = findParentAndIndex(app, id);
+    if (!info) return;
+
+    const parent = app.nodes[info.parentId];
+    if (!parent) return;
+
+    const newId = duplicateSubtree(app, id);
+    if (!newId) return;
+
+    insertChild(parent, newId, info.index + 1);
+
+    const next = normalizeApp(app);
+    set(() => ({
+      history: { past: [...history.past, history.present], present: next, future: [] },
+      selectedNodeId: newId
+    }));
+  },
+
+  moveNode: (id, dir) => {
+    const { history } = get();
+    const app = clone(history.present);
+    if (!id || isRootNode(app, id)) return;
+
+    const info = findParentAndIndex(app, id);
+    if (!info) return;
+
+    const parent = app.nodes[info.parentId];
+    if (!parent) return;
+
+    const children = parent.children ?? [];
+    const idx = info.index;
+    const nextIdx = dir === "up" ? idx - 1 : idx + 1;
+    if (nextIdx < 0 || nextIdx >= children.length) return;
+
+    const nextChildren = [...children];
+    [nextChildren[idx], nextChildren[nextIdx]] = [nextChildren[nextIdx], nextChildren[idx]];
+    parent.children = nextChildren;
+
+    const next = normalizeApp(app);
+    set(() => ({ history: { past: [...history.past, history.present], present: next, future: [] } }));
   },
 
   updateSelectedProp: (key, value) => {
-    const id = get().selectedNodeId;
-    if (!id) return;
+    const { history, selectedNodeId } = get();
+    if (!selectedNodeId) return;
 
-    commit(
-      (draft) => {
-        const node = draft.nodes[id];
-        if (!node) return;
-        node.props = { ...(node.props ?? {}), [key]: value };
-      },
-      get,
-      set
-    );
-  },
+    const app = clone(history.present);
+    const node = app.nodes[selectedNodeId];
+    if (!node) return;
 
-  deleteNode: (nodeId) => {
-    const app = get().history.present;
-    if (!nodeId || isRootNode(app, nodeId)) return;
+    node.props = node.props ?? {};
+    node.props[key] = value;
 
-    commit(
-      (draft) => {
-        const info = findParentAndIndex(draft, nodeId);
-        if (info) removeChild(draft.nodes[info.parentId], nodeId);
-        deleteSubtree(draft, nodeId);
-      },
-      get,
-      set
-    );
-
-    if (get().selectedNodeId === nodeId) {
-      set(() => ({ selectedNodeId: "" }));
-    }
-  },
-
-  moveNode: (nodeId, dir) => {
-    const app = get().history.present;
-    if (!nodeId || isRootNode(app, nodeId)) return;
-
-    const info = findParentAndIndex(app, nodeId);
-    if (!info) return;
-
-    commit(
-      (draft) => {
-        const parent = draft.nodes[info.parentId];
-        const idx = parent.children.indexOf(nodeId);
-        const nextIdx = dir === "up" ? idx - 1 : idx + 1;
-        if (nextIdx < 0 || nextIdx >= parent.children.length) return;
-
-        parent.children.splice(idx, 1);
-        parent.children.splice(nextIdx, 0, nodeId);
-      },
-      get,
-      set
-    );
+    const next = normalizeApp(app);
+    set(() => ({ history: { past: [...history.past, history.present], present: next, future: [] } }));
   },
 
   moveByDnD: (activeId, overId) => {
-    const app = get().history.present;
-
-    if (!activeId || !overId) return;
-    if (activeId === overId) return;
+    const { history } = get();
+    const app = clone(history.present);
+    if (!activeId || !overId || activeId === overId) return;
     if (isRootNode(app, activeId)) return;
 
     const activeInfo = findParentAndIndex(app, activeId);
     if (!activeInfo) return;
 
-    const isContainerDrop = overId.startsWith("list:");
-    const targetContainerId = isContainerDrop ? overId.replace("list:", "") : null;
+    let position: "before" | "after" | null = null;
+    let overNodeId = overId;
 
-    commit(
-      (draft) => {
-        const activeParent = draft.nodes[activeInfo.parentId];
-        if (!activeParent) return;
+    if (overId.startsWith("before:")) {
+      position = "before";
+      overNodeId = overId.replace("before:", "");
+    } else if (overId.startsWith("after:")) {
+      position = "after";
+      overNodeId = overId.replace("after:", "");
+    }
 
-        removeChild(activeParent, activeId);
+    const isContainerDrop = overNodeId.startsWith("list:");
+    const targetContainerId = isContainerDrop ? overNodeId.replace("list:", "") : null;
 
-        if (targetContainerId) {
-          const target = draft.nodes[targetContainerId];
-          if (!canHaveChildren(target)) {
-            insertChild(activeParent, activeId, activeInfo.index);
-            return;
-          }
-          insertChild(target, activeId);
-          return;
-        }
+    const activeParent = app.nodes[activeInfo.parentId];
+    if (!activeParent) return;
 
-        const overInfo = findParentAndIndex(draft, overId);
-        if (!overInfo) {
-          insertChild(activeParent, activeId, activeInfo.index);
-          return;
-        }
+    removeChild(activeParent, activeId);
 
-        const overParent = draft.nodes[overInfo.parentId];
-        if (!overParent) {
-          insertChild(activeParent, activeId, activeInfo.index);
-          return;
-        }
+    if (targetContainerId) {
+      const target = app.nodes[targetContainerId];
+      if (!canHaveChildren(target)) insertChild(activeParent, activeId, activeInfo.index);
+      else insertChild(target, activeId);
 
-        insertChild(overParent, activeId, overInfo.index);
-      },
-      get,
-      set
-    );
-  },
+      const next = normalizeApp(app);
+      set(() => ({ history: { past: [...history.past, history.present], present: next, future: [] } }));
+      return;
+    }
 
-  duplicateNode: (nodeId) => {
-    const app = get().history.present;
-    if (!nodeId || isRootNode(app, nodeId)) return;
+    const overInfo = findParentAndIndex(app, overNodeId);
+    if (!overInfo) {
+      insertChild(activeParent, activeId, activeInfo.index);
+      return;
+    }
 
-    const info = findParentAndIndex(app, nodeId);
-    if (!info) return;
+    const overParent = app.nodes[overInfo.parentId];
+    if (!overParent) {
+      insertChild(activeParent, activeId, activeInfo.index);
+      return;
+    }
 
-    let newRootId = "";
+    const baseIndex = overInfo.index;
+    const insertIndex = position === "after" ? baseIndex + 1 : baseIndex;
+    insertChild(overParent, activeId, insertIndex);
 
-    commit(
-      (draft) => {
-        newRootId = duplicateSubtree(draft, nodeId);
-        const parent = draft.nodes[info.parentId];
-        insertChild(parent, newRootId, info.index + 1);
-      },
-      get,
-      set
-    );
-
-    if (newRootId) set(() => ({ selectedNodeId: newRootId }));
+    const next = normalizeApp(app);
+    set(() => ({ history: { past: [...history.past, history.present], present: next, future: [] } }));
   }
 }));
