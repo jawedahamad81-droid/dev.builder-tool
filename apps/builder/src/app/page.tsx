@@ -32,6 +32,11 @@ export default function BuilderHome() {
   const activePageId = useBuilderStore((s) => s.activePageId);
   const selectedNodeId = useBuilderStore((s) => s.selectedNodeId);
 
+  const addRowPreset = useBuilderStore((s) => s.addRowPreset);
+  const addSectionPreset = useBuilderStore((s) => s.addSectionPreset);
+  const saveSelectedAsComponent = useBuilderStore((s) => s.saveSelectedAsComponent);
+  const insertComponent = useBuilderStore((s) => s.insertComponent);
+
   const projectId = useBuilderStore((s) => s.projectId);
   const setProjectId = useBuilderStore((s) => s.setProjectId);
   const loadApp = useBuilderStore((s) => s.loadApp);
@@ -47,11 +52,13 @@ export default function BuilderHome() {
   const moveNode = useBuilderStore((s) => s.moveNode);
   const moveByDnD = useBuilderStore((s) => s.moveByDnD);
   const duplicateNode = useBuilderStore((s) => s.duplicateNode);
+  const addPreset = useBuilderStore((s) => s.addPreset);
 
   const undo = useBuilderStore((s) => s.undo);
   const redo = useBuilderStore((s) => s.redo);
   const canUndo = useBuilderStore((s) => s.canUndo);
   const canRedo = useBuilderStore((s) => s.canRedo);
+
 
   const selectedIsContainer = !!selectedNodeId && app.nodes[selectedNodeId]?.type === "container";
 
@@ -59,7 +66,7 @@ export default function BuilderHome() {
     () => app.pages.find((p) => p.id === activePageId) ?? app.pages[0],
     [app.pages, activePageId]
   );
-
+  const rootContainerId = page.rootNodeId;
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   );
@@ -189,16 +196,24 @@ export default function BuilderHome() {
     const overIdRaw = event.over?.id ? String(event.over.id) : "";
 
     setOverlay(null);
-
-    // Clear indicator after drop
     const finalIndicator = indicator;
     setIndicator(null);
 
     if (!overIdRaw) return;
 
-    // A) Palette -> list:<containerId>
+    // ✅ A) Saved component -> list:<containerId>
+    if (activeIdRaw.startsWith("component:")) {
+      const componentId = activeIdRaw.replace("component:", "");
+      if (!overIdRaw.startsWith("list:")) return;
+
+      const parentId = overIdRaw.replace("list:", "");
+      insertComponent(parentId, componentId);
+      return;
+    }
+
+    // ✅ B) Palette node -> list:<containerId>
     if (activeIdRaw.startsWith("palette:")) {
-      const nodeType = activeIdRaw.replace("palette:", "") as NodeType;
+      const nodeType = activeIdRaw.replace("palette:", "") as any;
       if (!overIdRaw.startsWith("list:")) return;
 
       const parentId = overIdRaw.replace("list:", "");
@@ -206,26 +221,21 @@ export default function BuilderHome() {
       return;
     }
 
-    // B) Node -> move/reorder
+    // ✅ C) Node -> move/reorder
     if (activeIdRaw.startsWith("node:")) {
       const activeNodeId = activeIdRaw.replace("node:", "");
 
-      // drop into container list (append)
       if (overIdRaw.startsWith("list:")) {
-        moveByDnD(activeNodeId, overIdRaw); // keep list:<id>
+        moveByDnD(activeNodeId, overIdRaw);
         return;
       }
 
-      // drop on node with before/after indicator
       if (overIdRaw.startsWith("node:")) {
         const overNodeId = overIdRaw.replace("node:", "");
-
-        // Use indicator position if available; default "before"
         const pos =
           finalIndicator?.kind === "node" && finalIndicator.overNodeId === overNodeId
             ? finalIndicator.position
             : "before";
-
         moveByDnD(activeNodeId, `${pos}:${overNodeId}`);
       }
     }
@@ -290,7 +300,12 @@ export default function BuilderHome() {
                   </div>
 
                   <div style={{ marginTop: 10 }}>
-                    <Palette search={search} onAddToRoot={(type) => addNodeToRoot(type)} />
+                    <Palette
+                      search={search}
+                      app={app}
+                      onAddToRoot={(type) => addNodeToRoot(type)}
+                      onInsertComponentToRoot={(componentId) => insertComponent(rootContainerId, componentId)}
+                    />
                   </div>
 
                   <div className="section">
@@ -377,6 +392,9 @@ export default function BuilderHome() {
           selectedNodeId={selectedNodeId}
           updateProp={updateProp}
           duplicateSelected={() => selectedNodeId && duplicateNode(selectedNodeId)}
+          addRowPreset={addRowPreset}
+          addSectionPreset={addSectionPreset}
+          saveSelectedAsComponent={saveSelectedAsComponent}
         />
       </div>
 

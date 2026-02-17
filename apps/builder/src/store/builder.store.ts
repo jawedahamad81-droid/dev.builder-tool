@@ -1,23 +1,20 @@
 "use client";
 
 import { create } from "zustand";
-import { AppSchema, type AppModel, type Node, type NodeType } from "@packages/schemas";
+import {
+  AppSchema,
+  type AppModel,
+  type Node,
+  type NodeType
+} from "@packages/schemas";
 
 type History<T> = { past: T[]; present: T; future: T[] };
 type MoveDir = "up" | "down";
 
-// ✅ Day-10 includes new components
-type BuilderNodeType =
-  | NodeType
-  | "text"
-  | "button"
-  | "container"
-  | "col"
-  | "image"
-  | "input"
-  | "iconButton"
-  | "badge"
-  | "card";
+export type BuilderNodeType = NodeType;
+
+export type RowPreset = 2 | 3 | 4 | 6 | 8 | 12;
+export type SectionPreset = "hero" | "cards";
 
 export type BuilderState = {
   projectId: string;
@@ -46,6 +43,15 @@ export type BuilderState = {
   moveByDnD: (activeId: string, overId: string) => void;
 
   updateSelectedProp: (key: string, value: any) => void;
+
+  // ✅ Day-12
+  addRowPreset: (containerId: string, cols: RowPreset) => void;
+  addSectionPreset: (containerId: string, preset: SectionPreset) => void;
+
+  // ✅ Day-12 Component Library
+  saveSelectedAsComponent: (name: string) => void;
+  insertComponent: (parentId: string, componentId: string, index?: number) => void;
+  deleteComponent: (componentId: string) => void;
 };
 
 function uid(prefix = "node") {
@@ -56,35 +62,44 @@ function clone<T>(x: T): T {
   return JSON.parse(JSON.stringify(x));
 }
 
+function normalizeApp(app: AppModel): AppModel {
+  const parsed = AppSchema.parse(app);
+  const next = clone(parsed);
+
+  // ensure children arrays exist for containers that can hold children
+  for (const id of Object.keys(next.nodes)) {
+    const n = next.nodes[id];
+    if (canHaveChildren(n) && !Array.isArray(n.children)) n.children = [];
+    if (!n.props) n.props = {};
+  }
+
+  next.data = next.data ?? { collections: {} };
+  next.data.collections = next.data.collections ?? {};
+
+  next.library = next.library ?? { components: {} };
+  next.library.components = next.library.components ?? {};
+
+  return next;
+}
+
 function isRootNode(app: AppModel, nodeId: string) {
   return app.pages.some((p) => p.rootNodeId === nodeId);
 }
 
 function canHaveChildren(node?: Node) {
-  return node?.type === "container" || node?.type === "col" || node?.type === "card";
-}
-
-function normalizeApp(app: AppModel): AppModel {
-  const parsed = AppSchema.parse(app);
-  const next = clone(parsed);
-
-  for (const id of Object.keys(next.nodes)) {
-    const n = next.nodes[id];
-    if (canHaveChildren(n) && !Array.isArray(n.children)) n.children = [];
-  }
-
-  // Ensure data exists
-  next.data = next.data ?? { collections: {} };
-  next.data.collections = next.data.collections ?? {};
-
-  return next;
+  return (
+    node?.type === "container" ||
+    node?.type === "row" ||
+    node?.type === "col" ||
+    node?.type === "card"
+  );
 }
 
 function createNode(type: BuilderNodeType): Node {
   const id = uid(type);
 
   if (type === "text") {
-    return { id, type: "text", props: { value: "Text {{index}}", size: 16 }, children: [] };
+    return { id, type: "text", props: { value: "Text", size: 18 }, children: [] };
   }
   if (type === "button") {
     return { id, type: "button", props: { label: "Button" }, children: [] };
@@ -94,20 +109,47 @@ function createNode(type: BuilderNodeType): Node {
       id,
       type: "container",
       props: {
-        layout: "flex", // "flex" | "grid12"
+        layout: "flex", // flex | grid12 (still allowed)
         direction: "column",
-        gap: 10,
-        padding: 10,
+        gap: 12,
+        padding: 12,
         border: true
       },
       children: []
     };
   }
-  if (type === "col") {
-    return { id, type: "col", props: { span: 6, minHeight: 80 }, children: [] };
+
+  // ✅ Day-12 row
+  if (type === "row") {
+    return {
+      id,
+      type: "row",
+      props: {
+        gap: 12,
+        padding: 0,
+        align: "stretch" // stretch | start | center
+      },
+      children: []
+    };
   }
 
-  // ✅ Day-10 components
+  // ✅ Upgraded col (responsive spans)
+  if (type === "col") {
+    return {
+      id,
+      type: "col",
+      props: {
+        span: 12,
+        spanLg: 6,
+        spanMd: 12,
+        spanSm: 12,
+        minHeight: 90,
+        padding: 10
+      },
+      children: []
+    };
+  }
+
   if (type === "image") {
     return {
       id,
@@ -128,10 +170,10 @@ function createNode(type: BuilderNodeType): Node {
       id,
       type: "input",
       props: {
-        placeholder: "Search products…",
+        placeholder: "Search…",
         value: "",
-        radius: 999,
-        height: 42
+        height: 42,
+        radius: 14
       },
       children: []
     };
@@ -141,11 +183,7 @@ function createNode(type: BuilderNodeType): Node {
     return {
       id,
       type: "iconButton",
-      props: {
-        icon: "heart", // heart | cart | star | user
-        label: "",
-        radius: 12
-      },
+      props: { icon: "heart", label: "", radius: 12 },
       children: []
     };
   }
@@ -154,7 +192,7 @@ function createNode(type: BuilderNodeType): Node {
     return {
       id,
       type: "badge",
-      props: { text: "Top item", tone: "yellow" },
+      props: { text: "Top", tone: "yellow" },
       children: []
     };
   }
@@ -216,8 +254,52 @@ function duplicateSubtree(app: AppModel, nodeId: string): string {
   return newId;
 }
 
+/**
+ * Capture subtree nodes into a standalone map (for library)
+ */
+function captureSubtree(app: AppModel, rootId: string): Record<string, Node> {
+  const out: Record<string, Node> = {};
+  const walk = (id: string) => {
+    const n = app.nodes[id];
+    if (!n) return;
+    out[id] = clone(n);
+    for (const cid of n.children ?? []) walk(cid);
+  };
+  walk(rootId);
+  return out;
+}
+
+/**
+ * Insert captured subtree into app with fresh ids
+ * returns newRootId
+ */
+function insertSubtree(app: AppModel, subtree: Record<string, Node>, rootId: string): string {
+  const idMap: Record<string, string> = {};
+
+  // create ids first
+  for (const oldId of Object.keys(subtree)) {
+    idMap[oldId] = uid(subtree[oldId].type);
+  }
+
+  // create nodes
+  for (const oldId of Object.keys(subtree)) {
+    const old = subtree[oldId];
+    const newId = idMap[oldId];
+    const children = (old.children ?? []).map((c) => idMap[c]).filter(Boolean);
+    app.nodes[newId] = {
+      id: newId,
+      type: old.type as any,
+      props: clone(old.props ?? {}),
+      children
+    };
+  }
+
+  return idMap[rootId];
+}
+
 function initialApp(): AppModel {
   const rootId = "page_home";
+
   const app: AppModel = {
     pages: [{ id: "pg_home", name: "Home", routePath: "/", rootNodeId: rootId }],
     nodes: {
@@ -228,7 +310,6 @@ function initialApp(): AppModel {
         children: []
       }
     },
-    // ✅ Day-10 demo data
     data: {
       collections: {
         products: [
@@ -237,10 +318,15 @@ function initialApp(): AppModel {
           { title: "Boxing Gloves", price: 196.84, image: "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?auto=format&fit=crop&w=1200&q=60", rating: 4.8 }
         ]
       }
-    }
+    },
+    library: { components: {} }
   };
 
   return normalizeApp(app);
+}
+
+function pushHistory(history: History<AppModel>, nextApp: AppModel): History<AppModel> {
+  return { past: [...history.past, history.present], present: nextApp, future: [] };
 }
 
 export const useBuilderStore = create<BuilderState>((set, get) => ({
@@ -296,10 +382,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     insertChild(root, node.id);
 
     const next = normalizeApp(app);
-    set(() => ({
-      history: { past: [...history.past, history.present], present: next, future: [] },
-      selectedNodeId: node.id
-    }));
+    set(() => ({ history: pushHistory(history, next), selectedNodeId: node.id }));
   },
 
   addNode: (parentId, type, index) => {
@@ -313,10 +396,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     insertChild(parent, node.id, index);
 
     const next = normalizeApp(app);
-    set(() => ({
-      history: { past: [...history.past, history.present], present: next, future: [] },
-      selectedNodeId: node.id
-    }));
+    set(() => ({ history: pushHistory(history, next), selectedNodeId: node.id }));
   },
 
   deleteNode: (id) => {
@@ -327,10 +407,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     deleteSubtree(app, id);
 
     const next = normalizeApp(app);
-    set(() => ({
-      history: { past: [...history.past, history.present], present: next, future: [] },
-      selectedNodeId: ""
-    }));
+    set(() => ({ history: pushHistory(history, next), selectedNodeId: "" }));
   },
 
   duplicateNode: (id) => {
@@ -350,10 +427,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     insertChild(parent, newId, info.index + 1);
 
     const next = normalizeApp(app);
-    set(() => ({
-      history: { past: [...history.past, history.present], present: next, future: [] },
-      selectedNodeId: newId
-    }));
+    set(() => ({ history: pushHistory(history, next), selectedNodeId: newId }));
   },
 
   moveNode: (id, dir) => {
@@ -377,7 +451,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     parent.children = nextChildren;
 
     const next = normalizeApp(app);
-    set(() => ({ history: { past: [...history.past, history.present], present: next, future: [] } }));
+    set(() => ({ history: pushHistory(history, next) }));
   },
 
   updateSelectedProp: (key, value) => {
@@ -392,7 +466,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     node.props[key] = value;
 
     const next = normalizeApp(app);
-    set(() => ({ history: { past: [...history.past, history.present], present: next, future: [] } }));
+    set(() => ({ history: pushHistory(history, next) }));
   },
 
   moveByDnD: (activeId, overId) => {
@@ -429,7 +503,7 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
       else insertChild(target, activeId);
 
       const next = normalizeApp(app);
-      set(() => ({ history: { past: [...history.past, history.present], present: next, future: [] } }));
+      set(() => ({ history: pushHistory(history, next) }));
       return;
     }
 
@@ -450,6 +524,169 @@ export const useBuilderStore = create<BuilderState>((set, get) => ({
     insertChild(overParent, activeId, insertIndex);
 
     const next = normalizeApp(app);
-    set(() => ({ history: { past: [...history.past, history.present], present: next, future: [] } }));
-  }
+    set(() => ({ history: pushHistory(history, next) }));
+  },
+
+  /**
+   * ✅ Day-12: Add a row with N columns into a container
+   * cols: 2/3/4/6/8/12
+   */
+  addRowPreset: (containerId, cols) =>
+    set((state) => {
+      const app = clone(state.history.present);
+      const container = app.nodes[containerId];
+      if (!container || container.type !== "container") return {};
+
+      // 1) create row
+      const row = createNode("row");
+      app.nodes[row.id] = row;
+      insertChild(container, row.id);
+
+      // 2) create columns
+      const span = Math.max(1, Math.floor(12 / cols));
+      for (let i = 0; i < cols; i++) {
+        const col = createNode("col");
+        col.props = {
+          ...(col.props ?? {}),
+          span: span,
+          spanLg: span,
+          spanMd: Math.min(12, span * 2),
+          spanSm: 12
+        };
+        app.nodes[col.id] = col;
+        insertChild(row, col.id);
+      }
+
+      const next = normalizeApp(app);
+      return { history: pushHistory(state.history, next), selectedNodeId: row.id };
+    }),
+
+  /**
+   * ✅ Day-12: Section presets inside container
+   * - hero: title/subtitle/cta
+   * - cards: row(3) with card template repeated from products
+   */
+  addSectionPreset: (containerId, preset) =>
+    set((state) => {
+      const app = clone(state.history.present);
+      const container = app.nodes[containerId];
+      if (!container || container.type !== "container") return {};
+
+      if (preset === "hero") {
+        const section = createNode("container");
+        section.props = { layout: "flex", direction: "column", gap: 10, padding: 18, border: true };
+        app.nodes[section.id] = section;
+        insertChild(container, section.id);
+
+        const title = createNode("text");
+        title.props = { value: "Build anything with your Builder", size: 34 };
+        app.nodes[title.id] = title;
+        insertChild(section, title.id);
+
+        const subtitle = createNode("text");
+        subtitle.props = { value: "Ecommerce • Hospitality • Entertainment • Finance", size: 16 };
+        app.nodes[subtitle.id] = subtitle;
+        insertChild(section, subtitle.id);
+
+        const cta = createNode("button");
+        cta.props = { label: "Get Started" };
+        app.nodes[cta.id] = cta;
+        insertChild(section, cta.id);
+      }
+
+      if (preset === "cards") {
+        // create a row preset (3 columns) and place a repeated template in each col
+        const row = createNode("row");
+        app.nodes[row.id] = row;
+        insertChild(container, row.id);
+
+        // row should repeat products; the template is inside cols
+        // simplest: apply repeat on row, so it renders template for each product
+        row.props = { ...(row.props ?? {}), repeat: { source: "products", item: "item", limit: 6 } };
+
+        // template = one "card" that itself contains: image, text(title), text(price), button
+        const card = createNode("card");
+        app.nodes[card.id] = card;
+        insertChild(row, card.id);
+
+        const img = createNode("image");
+        img.props = { ...(img.props ?? {}), src: "{{item.image}}", height: 170, radius: 16 };
+        app.nodes[img.id] = img;
+        insertChild(card, img.id);
+
+        const t1 = createNode("text");
+        t1.props = { value: "{{item.title}}", size: 18 };
+        app.nodes[t1.id] = t1;
+        insertChild(card, t1.id);
+
+        const t2 = createNode("text");
+        t2.props = { value: "₹ {{item.price}}", size: 14 };
+        app.nodes[t2.id] = t2;
+        insertChild(card, t2.id);
+
+        const buy = createNode("button");
+        buy.props = { label: "Buy now" };
+        app.nodes[buy.id] = buy;
+        insertChild(card, buy.id);
+      }
+
+      const next = normalizeApp(app);
+      return { history: pushHistory(state.history, next) };
+    }),
+
+  /**
+   * ✅ Day-12: Save selected subtree into app.library.components
+   */
+  saveSelectedAsComponent: (name) =>
+    set((state) => {
+      const { selectedNodeId } = state;
+      if (!selectedNodeId) return {};
+
+      const app = clone(state.history.present);
+      const root = app.nodes[selectedNodeId];
+      if (!root) return {};
+
+      const compId = uid("comp");
+      const nodes = captureSubtree(app, selectedNodeId);
+
+      app.library = app.library ?? { components: {} };
+      app.library.components = app.library.components ?? {};
+      app.library.components[compId] = {
+        id: compId,
+        name: name?.trim() || "Untitled Component",
+        rootNodeId: selectedNodeId,
+        nodes
+      };
+
+      const next = normalizeApp(app);
+      return { history: pushHistory(state.history, next) };
+    }),
+
+  /**
+   * ✅ Day-12: Insert saved component (subtree clone) into parent
+   */
+  insertComponent: (parentId, componentId, index) =>
+    set((state) => {
+      const app = clone(state.history.present);
+      const parent = app.nodes[parentId];
+      if (!parent || !canHaveChildren(parent)) return {};
+
+      const comp = app.library?.components?.[componentId];
+      if (!comp) return {};
+
+      const newRootId = insertSubtree(app, comp.nodes, comp.rootNodeId);
+      insertChild(parent, newRootId, index);
+
+      const next = normalizeApp(app);
+      return { history: pushHistory(state.history, next), selectedNodeId: newRootId };
+    }),
+
+  deleteComponent: (componentId) =>
+    set((state) => {
+      const app = clone(state.history.present);
+      if (!app.library?.components?.[componentId]) return {};
+      delete app.library.components[componentId];
+      const next = normalizeApp(app);
+      return { history: pushHistory(state.history, next) };
+    })
 }));

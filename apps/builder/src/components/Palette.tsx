@@ -3,11 +3,13 @@
 import React from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { Icons } from "./icons";
+import type { AppModel } from "@packages/schemas";
 
 export type PaletteNodeType =
   | "text"
   | "button"
   | "container"
+  | "row"
   | "col"
   | "image"
   | "input"
@@ -15,59 +17,66 @@ export type PaletteNodeType =
   | "badge"
   | "card";
 
-const ITEMS: Array<{
+const BASIC_ITEMS: Array<{
   title: string;
   meta: string;
   type: PaletteNodeType;
-  Icon: any;
+  Icon: React.FC<any>;
 }> = [
   { title: "Text", meta: "Typography", type: "text", Icon: Icons.Text },
   { title: "Button", meta: "Actions", type: "button", Icon: Icons.Button },
   { title: "Input", meta: "Forms", type: "input", Icon: Icons.Search },
-  { title: "Image", meta: "Media", type: "image", Icon: Icons.Layers },
+  { title: "Image", meta: "Media", type: "image", Icon: Icons.Preview },
   { title: "Icon Button", meta: "Actions", type: "iconButton", Icon: Icons.Add },
-  { title: "Badge", meta: "Label", type: "badge", Icon: Icons.Grid },
-  { title: "Card", meta: "Surface", type: "card", Icon: Icons.Layers },
+  { title: "Badge", meta: "Label", type: "badge", Icon: Icons.Layers },
+  { title: "Card", meta: "Surface", type: "card", Icon: Icons.Container },
   { title: "Container", meta: "Layout", type: "container", Icon: Icons.Container },
-  { title: "Column", meta: "Grid12 item", type: "col", Icon: Icons.Grid }
+  { title: "Row", meta: "Grid wrapper", type: "row", Icon: Icons.Grid },
+  { title: "Column", meta: "Grid item", type: "col", Icon: Icons.Grid }
 ];
 
 function DraggableBlock({
+  id,
   title,
   meta,
-  type,
   Icon,
+  data,
   onClickAdd
 }: {
+  id: string;
   title: string;
   meta: string;
-  type: PaletteNodeType;
-  Icon: any;
+  Icon: React.FC<any>;
+  data: any;
   onClickAdd: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `palette:${type}`,
-    data: { kind: "palette", nodeType: type }
+    id,
+    data
   });
 
   const style: React.CSSProperties = {
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
-    opacity: isDragging ? 0.55 : 1
+    opacity: isDragging ? 0.55 : 1,
+    cursor: isDragging ? "grabbing" : "grab"
   };
 
   return (
     <div
       ref={setNodeRef}
-      className="block"
+      className={`block ${isDragging ? "dragging" : ""}`}
       style={style}
-      onClick={onClickAdd}
+      title="Drag to canvas • Click to add"
+      onClick={() => {
+        // Prevent accidental click while dragging
+        if (!isDragging) onClickAdd();
+      }}
       {...listeners}
       {...attributes}
-      title="Drag to canvas • Click to add"
     >
       <div className="blockTitle" style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <Icon size={16} />
-        {title}
+        <span>{title}</span>
       </div>
       <div className="blockMeta">{meta}</div>
     </div>
@@ -76,33 +85,77 @@ function DraggableBlock({
 
 export default function Palette({
   search,
-  onAddToRoot
+  onAddToRoot,
+  app,
+  onInsertComponentToRoot
 }: {
   search: string;
   onAddToRoot: (type: PaletteNodeType) => void;
+
+  // ✅ Day-12 library
+  app: AppModel;
+  onInsertComponentToRoot: (componentId: string) => void;
 }) {
-  const filtered = ITEMS.filter((it) =>
+  const filteredBasic = BASIC_ITEMS.filter((it) =>
     search ? it.title.toLowerCase().includes(search.toLowerCase()) : true
   );
 
+  const components = Object.values(app.library?.components ?? {});
+  const filteredComponents = components.filter((c) =>
+    search ? c.name.toLowerCase().includes(search.toLowerCase()) : true
+  );
+
   return (
-    <div className="category">
-      <div className="categoryHeader">
-        Basic ({filtered.length}) <span className="kbd">Drag & Drop</span>
+    <>
+      {/* BASIC */}
+      <div className="category">
+        <div className="categoryHeader">
+          Basic ({filteredBasic.length})
+          <span className="kbd">Drag / Click</span>
+        </div>
+
+        <div className="categoryGrid">
+          {filteredBasic.map((item) => (
+            <DraggableBlock
+              key={item.type}
+              id={`palette:${item.type}`}
+              title={item.title}
+              meta={item.meta}
+              Icon={item.Icon}
+              data={{ kind: "palette", nodeType: item.type }}
+              onClickAdd={() => onAddToRoot(item.type)}
+            />
+          ))}
+        </div>
       </div>
 
-      <div className="categoryGrid">
-        {filtered.map((b) => (
-          <DraggableBlock
-            key={b.type}
-            title={b.title}
-            meta={b.meta}
-            type={b.type}
-            Icon={b.Icon}
-            onClickAdd={() => onAddToRoot(b.type)}
-          />
-        ))}
+      {/* SAVED COMPONENTS */}
+      <div className="category" style={{ marginTop: 12 }}>
+        <div className="categoryHeader">
+          Saved ({filteredComponents.length})
+          <span className="kbd">Library</span>
+        </div>
+
+        <div className="categoryGrid">
+          {filteredComponents.length === 0 ? (
+            <div className="smallMuted" style={{ padding: "8px 2px" }}>
+              Save a container/row/card from Inspector → it appears here.
+            </div>
+          ) : (
+            filteredComponents.map((c) => (
+              <DraggableBlock
+                key={c.id}
+                id={`component:${c.id}`}
+                title={c.name}
+                meta="Saved Component"
+                Icon={Icons.Layers}
+                data={{ kind: "component", componentId: c.id }}
+                onClickAdd={() => onInsertComponentToRoot(c.id)}
+              />
+            ))
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }

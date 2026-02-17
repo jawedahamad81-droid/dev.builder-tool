@@ -19,6 +19,8 @@
   --r-md: 12px;
 
   --gap: 12px;
+
+  --accent: var(--brand);
 }
 
 * { box-sizing: border-box; }
@@ -249,7 +251,8 @@ body { background: var(--bg); color: var(--text); }
   border-radius: 18px;
   box-shadow: 0 18px 40px rgba(2, 6, 23, 0.14);
   padding: 14px;
-}
+  height: 100%;
+} 
 
 /* Tabs (Inspector / Left) */
 .tabs {
@@ -401,6 +404,7 @@ body { background: var(--bg); color: var(--text); }
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 10px 22px rgba(2, 6, 23, 0.10);
   opacity: 0;
+  z-index: 1;
   transform: translateY(6px);
   pointer-events: none;
   transition: opacity 120ms ease, transform 120ms ease;
@@ -495,3 +499,207 @@ body { background: var(--bg); color: var(--text); }
 .topBar .btn svg {
   stroke-width: 1.8;
 }
+.dropLine {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  height: 0;
+  border-top: 3px solid rgba(37, 99, 235, 0.75);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.dropLine.top { top: -6px; }
+.dropLine.bottom { bottom: -6px; }
+.dropHint {
+  outline: 2px dashed rgba(37, 99, 235, 0.65);
+  outline-offset: 4px;
+  background: rgba(37, 99, 235, 0.03);
+}
+
+.containerEmptyHint {
+  font-size: 12px;
+  opacity: 0.72;
+  padding: 12px;
+  border-radius: 14px;
+  border: 2px dashed rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.05);
+  text-align: center;
+  font-weight: 800;
+}
+.block:hover .blockIcon {
+  color: var(--accent);
+}
+.segToggle {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-solid);
+  border-radius: 999px;
+}
+
+.segBtn {
+  flex: 1;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 900;
+  font-size: 12px;
+  color: rgba(15,23,42,0.70);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.segBtn.active {
+  background: rgba(37,99,235,0.10);
+  border-color: rgba(37,99,235,0.22);
+  color: rgba(15,23,42,0.92);
+}
+.sectionHeader {
+  padding: 10px 12px;
+  font-weight: 900;
+  display: flex;
+  justify-content: flex-start; /* ✅ not space-between */
+  align-items: center;
+  gap: 10px;                  /* ✅ consistent */
+}
+.flexCol {
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px dashed rgba(0,0,0,0.20);
+  background: rgba(255,255,255,0.62);
+}
+
+.grid12 {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px dashed rgba(0,0,0,0.20);
+  background: rgba(255,255,255,0.62);
+}
+.canvasInput {
+  width: 100%;
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(15,23,42,0.10);
+  background: rgba(255,255,255,0.95);
+  outline: none;
+  font-weight: 700;
+}
+.canvasInput {
+  width: 100%;
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(2,6,23,0.10);
+  background: white;
+  font-weight: 700;
+  outline: none;
+}
+
+.badge {
+  display: inline-flex;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(2,6,23,0.10);
+  background: rgba(250,204,21,0.20);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.card {
+  border-radius: 18px;
+  border: 1px solid rgba(2,6,23,0.10);
+  background: rgba(255,255,255,0.92);
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.06);
+  overflow: hidden;
+}
+/* ===== Seg Toggle (Inspector) ===== */
+.segToggle{
+  display:flex;
+  gap:6px;
+  padding:6px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  background: var(--panel-solid);
+}
+.segBtn{
+  flex:1;
+  padding:8px 10px;
+  border-radius:999px;
+  border:1px solid transparent;
+  background: transparent;
+  font-weight:900;
+  font-size:12px;
+  cursor:pointer;
+  color: rgba(15,23,42,0.72);
+}
+.segBtn.active{
+  background: rgba(37,99,235,0.12);
+  border-color: rgba(37,99,235,0.25);
+  color: rgba(15,23,42,0.92);
+}
+
+/* ===== Drop line (before/after) ===== */
+.dropLine{
+  position:absolute;
+  left:10px;
+  right:10px;
+  height:0;
+  border-top:3px solid rgba(37,99,235,0.75);
+  border-radius:999px;
+  pointer-events:none;
+}
+.dropLine.top{ top:-6px; }
+.dropLine.bottom{ bottom:-6px; }
+
+/* ===== Grid Row ===== */
+.grid12{
+  display:grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap:12px;
+}
+
+/* ===== Canvas input (fix spacing / full width) ===== */
+.canvasInput{
+  width:100%;
+  height:42px;
+  padding:0 14px;
+  border-radius:14px;
+  border:1px solid rgba(0,0,0,0.10);
+  outline:none;
+  background:white;
+  font-weight:700;
+}
+
+/* ===== Badge ===== */
+.badge{
+  display:inline-flex;
+  align-items:center;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid rgba(0,0,0,0.08);
+  background: rgba(250,204,21,0.22);
+  font-weight:900;
+  font-size:12px;
+}
+
+/* ===== Card ===== */
+.card{
+  border:1px solid rgba(0,0,0,0.08);
+  background: rgba(255,255,255,0.92);
+  border-radius:18px;
+}
+
+
